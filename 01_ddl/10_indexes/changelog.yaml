@@ -29,3 +29,18 @@ databaseChangeLog:
             path: ../../05_rollbacks/01_ddl/10_indexes/002_create_indexes.rollback.sql
             relativeToChangelogFile: true
             splitStatements: false
+  - changeSet:
+      id: ddl-indexes-003
+      author: telemed
+      labels: "HU-016,ddl,indexes"
+      comment: "Partial unique index on idempotency_key.document_id."
+      changes:
+        - sqlFile:
+            path: 003_unique_document_id.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+      rollback:
+        - sqlFile:
+            path: ../../05_rollbacks/01_ddl/10_indexes/003_unique_document_id.rollback.sql
+            relativeToChangelogFile: true
+            splitStatements: false
