@@ -1,0 +1,3 @@
+DROP INDEX IF EXISTS document_generation.idx_idempotency_key_document;
+DROP INDEX IF EXISTS document_generation.idx_consultation_document_pending_or_error;
+DROP INDEX IF EXISTS document_generation.idx_consultation_document_patient;
