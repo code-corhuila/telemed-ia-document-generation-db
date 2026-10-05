@@ -1,1 +1,31 @@
-databaseChangeLog: []
+databaseChangeLog:
+  - changeSet:
+      id: ddl-triggers-001
+      author: telemed
+      labels: "HU-016,ddl,triggers"
+      comment: "Guard: only PENDING->GENERATING->AVAILABLE/ERROR and ERROR->GENERATING transitions allowed."
+      changes:
+        - sqlFile:
+            path: 001_state_transition_guard.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+      rollback:
+        - sqlFile:
+            path: ../../05_rollbacks/01_ddl/09_triggers/001_state_transition_guard.rollback.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+  - changeSet:
+      id: ddl-triggers-002
+      author: telemed
+      labels: "HU-016,ddl,triggers"
+      comment: "Auto-refresh updated_at on every UPDATE."
+      changes:
+        - sqlFile:
+            path: 002_updated_at_refresh.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+      rollback:
+        - sqlFile:
+            path: ../../05_rollbacks/01_ddl/09_triggers/002_updated_at_refresh.rollback.sql
+            relativeToChangelogFile: true
+            splitStatements: false
