@@ -1,0 +1,32 @@
+-- -------------------------------------------------------------------------
+-- Make idempotency_key.document_id nullable.
+--
+-- Rationale: the -api must implement the two-phase insert pattern to
+-- make "create document + register idempotency key" atomic at the data
+-- layer. The pattern is:
+--
+--   1. INSERT INTO idempotency_key (idempotency_key, document_id, request_hash)
+--      VALUES ($1, NULL, $2)
+--      ON CONFLICT (idempotency_key) DO NOTHING
+--      RETURNING idempotency_key;
+--
+--   2. If RETURNING returned a row (this request "owns" the key):
+--        - create the consultation_document row,
+--        - UPDATE idempotency_key SET document_id = <new id>
+--          WHERE idempotency_key = $1,
+--        - COMMIT.
+--
+--   3. If RETURNING was empty (another request already claimed the key):
+--        - ROLLBACK,
+--        - SELECT the existing key's response and return it.
+--
+-- For this pattern to work, document_id must accept NULL during step 1.
+-- The partial unique index added in ddl-indexes-003 enforces that a
+-- non-null document_id maps to at most one key.
+--
+-- The original NOT NULL constraint was correct for a simpler (and racy)
+-- "insert document then insert key" flow. This changeset replaces it.
+-- -------------------------------------------------------------------------
+
+ALTER TABLE document_generation.idempotency_key
+  ALTER COLUMN document_id DROP NOT NULL;
