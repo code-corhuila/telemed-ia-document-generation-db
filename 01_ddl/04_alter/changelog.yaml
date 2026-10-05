@@ -1,1 +1,16 @@
-databaseChangeLog: []
+databaseChangeLog:
+  - changeSet:
+      id: ddl-alter-001
+      author: telemed
+      labels: "HU-016,ddl,alter"
+      comment: "Foreign key from idempotency_key to consultation_document."
+      changes:
+        - sqlFile:
+            path: 001_add_idempotency_key_fk.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+      rollback:
+        - sqlFile:
+            path: ../../05_rollbacks/01_ddl/04_alter/001_add_idempotency_key_fk.rollback.sql
+            relativeToChangelogFile: true
+            splitStatements: false
