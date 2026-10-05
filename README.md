@@ -40,6 +40,31 @@ externo y publica ConsultationPdfGenerated.
 - Liquibase 4.31
 - Docker Compose
 
+## Where the database lives
+
+Per **Anexo J**, the project has a single PostgreSQL instance owned by
+`telemed-ia-infra-postgres`. This repository does **not** define a
+Postgres container nor a volume: it only ships the Liquibase executor
+that applies the `document_generation` schema to the shared instance.
+
+- The instance, its volume, its users and its `pgcrypto` extension live
+  in `telemed-ia-infra-postgres`.
+- This repo owns the schema `document_generation` and its migrations.
+- The executor uses its own Liquibase control tables
+  (`databasechangelog_document_generation`,
+  `databasechangeloglock_document_generation`) so it can coexist with
+  other domains on the same instance (Anexo J.6).
+
+### How to apply the migrations
+
+From `telemed-ia-infra-postgres`:
+
+```bash
+./scripts/up.sh
+docker compose --env-file env/dev.env --profile tooling \
+  run --rm document-generation-db-migrate
+```
+
 ## ADRs que aplican
 - ADR-003 bounded-contexts
 - ADR-004 database-per-service
@@ -51,11 +76,11 @@ externo y publica ConsultationPdfGenerated.
 (Ver code-corhuila/telemed-ia-docs, 05-architecture/decisions/records/)
 
 ## Cómo levantar
-```bash
-cp .env.example .env
-docker compose -f deploy/compose.yml --env-file .env up -d
-docker compose -f deploy/compose.yml --env-file .env run --rm document-generation-db-migrate
-```
+Esta base de datos **no se levanta desde este repositorio**. Ver
+"Where the database lives": la instancia compartida se levanta desde
+`telemed-ia-infra-postgres` con `./scripts/up.sh`, y las migraciones
+se aplican desde ese mismo repositorio con el executor
+`document-generation-db-migrate` (perfil `tooling`).
 
 ## Gobernanza
 Ver code-corhuila/telemed-ia-docs.

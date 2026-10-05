@@ -1,34 +1,26 @@
-## Historia de usuario
+User story
+code-corhuila/telemed-ia-docs#26 (HU-016 — Download medical care summary as PDF)
 
-<!-- Referencia: HU-016 (RF-31) en code-corhuila/telemed-ia-docs#26 -->
-- HU / RF:
-- Issue de la HU:
-- Contrato de eventos afectado:
+What changes and why
+<!-- A few lines. -->
 
-## Qué cambia y por qué
+How it was tested
 
-<!-- Descripción del cambio y la razón. -->
+- [ ] db-ci.yml green
+- [ ] liquibase validate reports "No validation errors found"
+- [ ] liquibase update on an empty schema applies every changeset
+- [ ] Second liquibase update applies 0 changesets
+- [ ] liquibase rollback-count --count 999 leaves the schema empty
+- [ ] liquibase update rebuilds after the rollback
 
-## Cómo se probó
+Promotion trail
 
-- [ ] CI en verde
-- [ ] `liquibase update` desde base vacía
-- [ ] Segundo `liquibase update` sin changesets (0 changesets)
-- [ ] `rollback-count 999` ejecutado
-- [ ] `liquibase update` posterior al rollback reconstruye el esquema
+<!-- Only for PRs targeting qa or main. -->
+<!-- List of cherry-picked commits, each with its (cherry picked from commit <sha>) line. -->
 
-## Rastro de promoción
+Checklist
 
-<!-- Solo para PRs hacia qa / main. Una línea por commit, con "cherry picked from commit ..." -->
-
-```
-
-```
-
-## Lista de verificación
-
-- [ ] Sin secretos ni credenciales reales en el diff
-- [ ] Sin esquema de otros repositorios -db
-- [ ] Contrato de eventos respetado
-- [ ] PR de 400 líneas o menos
-- [ ] Conventional Commit en el mensaje
+- [ ] No secrets versioned
+- [ ] No schema changes outside this -db repository
+- [ ] PR <= 400 lines (tests and generated files excluded)
+- [ ] Conventional Commit in the title

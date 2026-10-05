@@ -1,51 +1,40 @@
 name: telemed-ia-document-generation-db
 
-services:
-  document-generation-db:
-    image: postgres:16-alpine
-    container_name: document-generation-db
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: ${DOCUMENT_GENERATION_DB_NAME:?DOCUMENT_GENERATION_DB_NAME requerido}
-      POSTGRES_USER: ${DOCUMENT_GENERATION_DB_USER:?DOCUMENT_GENERATION_DB_USER requerido}
-      POSTGRES_PASSWORD: ${DOCUMENT_GENERATION_DB_PASSWORD:?DOCUMENT_GENERATION_DB_PASSWORD requerido}
-    volumes:
-      - document_generation_pgdata:/var/lib/postgresql/data
-    expose:
-      - "5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DOCUMENT_GENERATION_DB_USER} -d ${DOCUMENT_GENERATION_DB_NAME}"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
-    networks:
-      - platform
+# =========================================================================
+# Migration executor for the document_generation schema.
+#
+# Per Anexo J:
+#   - This repo does NOT define a Postgres container nor a volume.
+#   - The single instance lives in telemed-ia-infra-postgres.
+#   - This executor only applies the domain migrations to the shared
+#     instance, using its own Liquibase control tables (Anexo J.6).
+#
+# The postgres service is provided by the composition root of
+# telemed-ia-infra-postgres, which `include:`s this file.
+#
+# Run it from the infra repo:
+#   docker compose --env-file env/dev.env --profile tooling \
+#     run --rm document-generation-db-migrate
+# =========================================================================
 
+services:
   document-generation-db-migrate:
     image: liquibase/liquibase:4.31
     container_name: document-generation-db-migrate
-    profiles:
-      - tooling
-    depends_on:
-      document-generation-db:
-        condition: service_healthy
-    environment:
-      LIQUIBASE_COMMAND_URL: ${LIQUIBASE_COMMAND_URL:?LIQUIBASE_COMMAND_URL requerido}
-      LIQUIBASE_COMMAND_USERNAME: ${LIQUIBASE_COMMAND_USERNAME:?LIQUIBASE_COMMAND_USERNAME requerido}
-      LIQUIBASE_COMMAND_PASSWORD: ${LIQUIBASE_COMMAND_PASSWORD:?LIQUIBASE_COMMAND_PASSWORD requerido}
-      LIQUIBASE_COMMAND_CHANGELOG_FILE: ${LIQUIBASE_COMMAND_CHANGELOG_FILE:?LIQUIBASE_COMMAND_CHANGELOG_FILE requerido}
-      LIQUIBASE_COMMAND_SEARCH_PATH: ${LIQUIBASE_COMMAND_SEARCH_PATH:-.}
+    profiles: [tooling]
     volumes:
-      - ../:/workspace:ro
+      - ..:/workspace:ro
     working_dir: /workspace
-    command: ["update"]
+    environment:
+      LIQUIBASE_COMMAND_URL: jdbc:postgresql://postgres:5432/${PG_DATABASE:-telemed_ia}
+      LIQUIBASE_COMMAND_USERNAME: ${DOCUMENT_GENERATION_APP_USER:-document_generation_app}
+      LIQUIBASE_COMMAND_PASSWORD: ${DOCUMENT_GENERATION_APP_PASSWORD:?required}
+      LIQUIBASE_COMMAND_CHANGELOG_FILE: changelog/changelog-master.yaml
+      LIQUIBASE_COMMAND_DATABASE_CHANGELOG_TABLE_NAME: databasechangelog_document_generation
+      LIQUIBASE_COMMAND_DATABASE_CHANGELOG_LOCK_TABLE_NAME: databasechangeloglock_document_generation
+    command: ["update", "--search-path=/workspace"]
     networks:
       - platform
-
-volumes:
-  document_generation_pgdata:
-    name: document_generation_pgdata
 
 networks:
   platform:
