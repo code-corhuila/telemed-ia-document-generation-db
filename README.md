@@ -65,6 +65,39 @@ docker compose --env-file env/dev.env --profile tooling \
   run --rm document-generation-db-migrate
 ```
 
+### Contract with document-service
+
+The application layer (`telemed-ia-document-generation-api`) must honor
+two contracts that the schema cannot enforce on its own:
+
+1. **Two-phase idempotency insert.** The `idempotency_key.document_id`
+   column is nullable so the API can insert the key first (with
+   `document_id = NULL`), then create the document and bind the key to
+   it, all inside a single transaction. A second POST with the same key
+   receives the cached response. The exact pattern is documented in the
+   header comment of `01_ddl/04_alter/002_make_document_id_nullable.sql`.
+
+2. **`request_hash` verification.** Before serving a cached response,
+   the API must recompute the request hash and compare it against the
+   stored `request_hash`. A mismatch means the same `Idempotency-Key`
+   was reused with a different payload and must be rejected with
+   `409 CONFLICT`, not silently accepted. The database stores the hash;
+   it cannot compare it to an incoming value.
+
+### Technical debt
+
+- **`idempotency_key` retention.** The table has no TTL or pruning job
+  yet. It grows with every POST, including successful ones. A future
+  PR should add a scheduled cleanup (e.g., delete rows older than 90
+  days) backed by an index on `created_at`. Registered as low-complexity
+  debt.
+
+- **`ON DELETE CASCADE` on `idempotency_key.document_id`.** If a
+  `consultation_document` is deleted, the matching idempotency-key row
+  disappears with it. This is intentional for storage hygiene but means
+  the dedup record is not an audit trail. If an audit trail is ever
+  required, it must live in a separate append-only table.
+
 ## ADRs que aplican
 - ADR-003 bounded-contexts
 - ADR-004 database-per-service
