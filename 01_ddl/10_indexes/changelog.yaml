@@ -1,1 +1,16 @@
-databaseChangeLog: []
+databaseChangeLog:
+  - changeSet:
+      id: ddl-indexes-001
+      author: telemed
+      labels: "HU-016,ddl,indexes"
+      comment: "Unique index on summary_id: one summary maps to one document."
+      changes:
+        - sqlFile:
+            path: 001_create_indexes.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+      rollback:
+        - sqlFile:
+            path: ../../05_rollbacks/01_ddl/10_indexes/001_create_indexes.rollback.sql
+            relativeToChangelogFile: true
+            splitStatements: false
