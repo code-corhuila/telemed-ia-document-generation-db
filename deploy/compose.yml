@@ -1,0 +1,53 @@
+name: telemed-ia-document-generation-db
+
+services:
+  document-generation-db:
+    image: postgres:16-alpine
+    container_name: document-generation-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DOCUMENT_GENERATION_DB_NAME:?DOCUMENT_GENERATION_DB_NAME requerido}
+      POSTGRES_USER: ${DOCUMENT_GENERATION_DB_USER:?DOCUMENT_GENERATION_DB_USER requerido}
+      POSTGRES_PASSWORD: ${DOCUMENT_GENERATION_DB_PASSWORD:?DOCUMENT_GENERATION_DB_PASSWORD requerido}
+    volumes:
+      - document_generation_pgdata:/var/lib/postgresql/data
+    expose:
+      - "5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DOCUMENT_GENERATION_DB_USER} -d ${DOCUMENT_GENERATION_DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - platform
+
+  document-generation-db-migrate:
+    image: liquibase/liquibase:4.31
+    container_name: document-generation-db-migrate
+    profiles:
+      - tooling
+    depends_on:
+      document-generation-db:
+        condition: service_healthy
+    environment:
+      LIQUIBASE_COMMAND_URL: ${LIQUIBASE_COMMAND_URL:?LIQUIBASE_COMMAND_URL requerido}
+      LIQUIBASE_COMMAND_USERNAME: ${LIQUIBASE_COMMAND_USERNAME:?LIQUIBASE_COMMAND_USERNAME requerido}
+      LIQUIBASE_COMMAND_PASSWORD: ${LIQUIBASE_COMMAND_PASSWORD:?LIQUIBASE_COMMAND_PASSWORD requerido}
+      LIQUIBASE_COMMAND_CHANGELOG_FILE: ${LIQUIBASE_COMMAND_CHANGELOG_FILE:?LIQUIBASE_COMMAND_CHANGELOG_FILE requerido}
+      LIQUIBASE_COMMAND_SEARCH_PATH: ${LIQUIBASE_COMMAND_SEARCH_PATH:-.}
+    volumes:
+      - ../:/workspace:ro
+    working_dir: /workspace
+    command: ["update"]
+    networks:
+      - platform
+
+volumes:
+  document_generation_pgdata:
+    name: document_generation_pgdata
+
+networks:
+  platform:
+    external: true
+    name: platform
