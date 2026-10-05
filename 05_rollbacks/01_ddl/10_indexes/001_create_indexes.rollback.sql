@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS document_generation.idx_consultation_document_summary_unique;

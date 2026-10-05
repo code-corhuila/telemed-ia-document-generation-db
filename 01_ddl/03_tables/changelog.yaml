@@ -1,1 +1,17 @@
-databaseChangeLog: []
+databaseChangeLog:
+  - changeSet:
+      id: ddl-tables-001
+      author: telemed
+      labels: "HU-016,ddl,tables"
+      comment: "consultation_document: metadata for post-consultation summary PDFs. No FKs to other domains, no binary content."
+      changes:
+        - sqlFile:
+            path: 001_create_consultation_document.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+      rollback:
+        - sqlFile:
+            path: ../../05_rollbacks/01_ddl/03_tables/001_create_consultation_document.rollback.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+
