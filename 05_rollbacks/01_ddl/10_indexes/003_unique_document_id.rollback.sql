@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS document_generation.idx_idempotency_key_document_unique;
