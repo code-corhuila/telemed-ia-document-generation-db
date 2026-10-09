@@ -119,3 +119,52 @@ se aplican desde ese mismo repositorio con el executor
 Ver code-corhuila/telemed-ia-docs.
 Ramas permanentes: develop, qa, main.
 Promoción entre permanentes por git cherry-pick -x.
+
+## Roles
+
+The `document_generation` schema is protected by two NOLOGIN roles that
+carry the privileges:
+
+- `document_generation_reader` — granted `SELECT` on the schema's tables.
+- `document_generation_writer` — granted `SELECT`, `INSERT`, `UPDATE`.
+
+Both roles are created by `telemed-ia-infra-postgres` during the
+instance bootstrap (`postgres/init/01-instance.sh`). This repo declares
+the grants (`03_dcl/01_grants/001_grants.sql`), not the roles.
+
+The application user, `document_generation_app`, is also created by the
+infrastructure (with a password from a secret), and is a member of both
+roles. The `-api` connects with `document_generation_app`, never with
+the administrator.
+
+This split follows Anexo J.4: the roles are instance-wide (they begin
+with the domain prefix), so they live in the infrastructure repository;
+the schema-level privileges are domain-specific, so they live here.
+
+## Reconstruction verification
+
+Per Anexo A, this repository ships a `db-ci.yml` workflow that runs on
+every push to `develop`, `qa`, and `main`, and on every pull request to
+those branches. The workflow spins up an empty Postgres 16 service,
+mimics the infrastructure bootstrap (creates the `_app`, `_reader`, and
+`_writer` roles), then runs four steps:
+
+1. `liquibase update` — the full schema is built from an empty database.
+2. `liquibase update` again — the second run must apply zero changesets.
+   A non-zero change count means migrations are not incremental.
+3. `liquibase rollback-count 999` — every changeset is rolled back in
+   reverse order, leaving the database empty.
+4. `liquibase update` — the schema is rebuilt from scratch after a full
+   rollback.
+
+A second job (`expected-count`) counts the changesets declared in every
+`changelog.yaml` and compares that number with the value in
+`changelog/expected-count.txt`. A mismatch fails the build.
+
+To run the verification locally:
+
+    docker network create platform       # once per machine
+    cd ../telemed-ia-infra-postgres
+    docker compose --env-file env/dev.env up -d --wait postgres
+    docker compose --env-file env/dev.env --profile tooling \
+      run --rm document-generation-db-migrate
