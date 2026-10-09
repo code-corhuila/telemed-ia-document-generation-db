@@ -28,11 +28,9 @@ jobs:
 
     env:
       LIQUIBASE_COMMAND_URL: jdbc:postgresql://localhost:5432/ci_db
-      # Throwaway CI-only credentials for the ephemeral Postgres
-      # service container that only exists during this job. Never
-      # copy these values into a real environment file.
+      # The password is generated at job start and exported to
+      # GITHUB_ENV. It is not stored in the repository.
       LIQUIBASE_COMMAND_USERNAME: document_generation_app
-      LIQUIBASE_COMMAND_PASSWORD: ci_app_password
       LIQUIBASE_COMMAND_CHANGELOG_FILE: changelog/changelog-master.yaml
       LIQUIBASE_COMMAND_DATABASE_CHANGELOG_TABLE_NAME: databasechangelog_document_generation
       LIQUIBASE_COMMAND_DATABASE_CHANGELOG_LOCK_TABLE_NAME: databasechangeloglock_document_generation
@@ -58,6 +56,12 @@ jobs:
             sleep 1
           done
 
+      - name: Generate ephemeral credentials for the app user
+        run: |
+          PW=$(openssl rand -hex 16)
+          echo "CI_APP_PASSWORD=$PW" >> "$GITHUB_ENV"
+          echo "LIQUIBASE_COMMAND_PASSWORD=$PW" >> "$GITHUB_ENV"
+
       - name: Bootstrap roles (mimics telemed-ia-infra-postgres)
         run: |
           # Minimal replica of the role bootstrap in
@@ -66,8 +70,8 @@ jobs:
           # _writer are created, this block must be updated in the same PR.
           # CI cannot check out the infra repo without a cross-repo token, so
           # this is an intentional duplication documented in Anexo J.4.
-          PGPASSWORD=postgres psql -h localhost -U postgres -d ci_db <<'SQL'
-          CREATE ROLE document_generation_app LOGIN PASSWORD 'ci_app_password';
+          PGPASSWORD=postgres psql -h localhost -U postgres -d ci_db <<SQL
+          CREATE ROLE document_generation_app LOGIN PASSWORD '${CI_APP_PASSWORD}';
           CREATE ROLE document_generation_reader NOLOGIN;
           CREATE ROLE document_generation_writer NOLOGIN;
           GRANT document_generation_reader, document_generation_writer TO document_generation_app;
@@ -88,14 +92,17 @@ jobs:
           fi
 
       - name: Step 3 - Rollback everything
-        run: liquibase rollback-count 999
+        run: |
+          TOTAL=$(grep -Rh "^\s*-\s*changeSet:" --include="changelog.yaml" . | wc -l)
+          echo "Rolling back $TOTAL changesets"
+          liquibase rollback-count "$TOTAL"
 
       - name: Step 4 - Rebuild from scratch
         run: liquibase update
 
       - name: Step 5 - Verify access control (reader cannot write)
         run: |
-          if PGPASSWORD=ci_app_password psql -h localhost -U document_generation_app -d ci_db \
+          if PGPASSWORD="$CI_APP_PASSWORD" psql -h localhost -U document_generation_app -d ci_db \
               -c "SET ROLE document_generation_reader; INSERT INTO document_generation.consultation_document (summary_id, patient_id, format, status) VALUES (gen_random_uuid(), gen_random_uuid(), 'PDF', 'PENDING');" 2>&1 | grep -qi "permission denied"; then
             echo "OK: _reader is blocked from INSERT"
           else
@@ -111,6 +118,11 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Count changesets in changelogs and compare to expected-count.txt
+        # Known gap: this only checks cardinality. Two changesets could be
+        # swapped, renamed, or have their id/author altered without changing
+        # the total, and this gate would not catch it. A stronger check
+        # (comparing sorted changeset IDs against a committed list) is
+        # recorded as a follow-up.
         run: |
           DECLARED=$(grep -Rh "^\s*-\s*changeSet:" --include="changelog.yaml" . | wc -l)
           EXPECTED=$(tr -d '[:space:]' < changelog/expected-count.txt)
