@@ -1,0 +1,102 @@
+name: DB CI
+
+on:
+  push:
+    branches: [develop, qa, main]
+  pull_request:
+    branches: [develop, qa, main]
+
+jobs:
+  reconstruction:
+    name: Reconstruction check
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: ci_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      LIQUIBASE_COMMAND_URL: jdbc:postgresql://localhost:5432/ci_db
+      LIQUIBASE_COMMAND_USERNAME: postgres
+      LIQUIBASE_COMMAND_PASSWORD: postgres
+      LIQUIBASE_COMMAND_CHANGELOG_FILE: changelog/changelog-master.yaml
+      LIQUIBASE_COMMAND_DATABASE_CHANGELOG_TABLE_NAME: databasechangelog_document_generation
+      LIQUIBASE_COMMAND_DATABASE_CHANGELOG_LOCK_TABLE_NAME: databasechangeloglock_document_generation
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Liquibase CLI
+        run: |
+          mkdir -p "$HOME/liquibase"
+          curl -sSL -o liquibase.tar.gz \
+            https://github.com/liquibase/liquibase/releases/download/v4.31.1/liquibase-4.31.1.tar.gz
+          tar -xzf liquibase.tar.gz -C "$HOME/liquibase"
+          echo "$HOME/liquibase" >> "$GITHUB_PATH"
+
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Wait for Postgres
+        run: |
+          for i in $(seq 1 30); do
+            PGPASSWORD=postgres psql -h localhost -U postgres -d ci_db -c "SELECT 1" >/dev/null 2>&1 && break
+            sleep 1
+          done
+
+      - name: Bootstrap roles (mimics telemed-ia-infra-postgres)
+        run: |
+          PGPASSWORD=postgres psql -h localhost -U postgres -d ci_db <<'SQL'
+          CREATE ROLE document_generation_app LOGIN PASSWORD 'ci_app_password';
+          CREATE ROLE document_generation_reader NOLOGIN;
+          CREATE ROLE document_generation_writer NOLOGIN;
+          GRANT document_generation_reader, document_generation_writer TO document_generation_app;
+          GRANT CREATE ON DATABASE ci_db TO document_generation_app;
+          SQL
+
+      - name: Step 1 - Apply all migrations
+        run: liquibase update
+
+      - name: Step 2 - Idempotency (expect zero changesets)
+        run: |
+          OUTPUT=$(liquibase update 2>&1)
+          echo "$OUTPUT"
+          if echo "$OUTPUT" | grep -qE "Run: [1-9]"; then
+            echo "ERROR: second update applied changesets; migrations are not incremental"
+            exit 1
+          fi
+
+      - name: Step 3 - Rollback everything
+        run: liquibase rollback-count 999
+
+      - name: Step 4 - Rebuild from scratch
+        run: liquibase update
+
+  expected-count:
+    name: Changelog expected count
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Count changesets in changelogs and compare to expected-count.txt
+        run: |
+          DECLARED=$(grep -Rh "^\s*-\s*changeSet:" --include="changelog.yaml" . | wc -l)
+          EXPECTED=$(tr -d '[:space:]' < changelog/expected-count.txt)
+          echo "Declared changesets in changelogs: $DECLARED"
+          echo "Expected count from expected-count.txt: $EXPECTED"
+          if [ "$DECLARED" != "$EXPECTED" ]; then
+            echo "ERROR: changelog count mismatch"
+            exit 1
+          fi
