@@ -122,46 +122,51 @@ Promoción entre permanentes por git cherry-pick -x.
 
 ## Roles
 
-The `document_generation` schema is protected by two NOLOGIN roles that
-carry the privileges:
+El schema `document_generation` está protegido por dos roles NOLOGIN que
+cargan los permisos:
 
-- `document_generation_reader` — granted `SELECT` on the schema's tables.
-- `document_generation_writer` — granted `SELECT`, `INSERT`, `UPDATE`.
+- `document_generation_reader` — tiene `SELECT` sobre las tablas del schema.
+- `document_generation_writer` — tiene `SELECT`, `INSERT` y `UPDATE`.
 
-Both roles are created by `telemed-ia-infra-postgres` during the
-instance bootstrap (`postgres/init/01-instance.sh`). This repo declares
-the grants (`03_dcl/01_grants/001_grants.sql`), not the roles.
+Ambos roles los crea `telemed-ia-infra-postgres` durante el arranque de
+la instancia (`postgres/init/01-instance.sh`). Este repositorio declara
+los permisos (`03_dcl/01_grants/001_grants.sql`), no los roles.
 
-The application user, `document_generation_app`, is also created by the
-infrastructure (with a password from a secret), and is a member of both
-roles. The `-api` connects with `document_generation_app`, never with
-the administrator.
+El usuario de aplicación, `document_generation_app`, también lo crea la
+infraestructura (con la contraseña tomada de un secreto) y es miembro de
+ambos roles. El `-api` se conecta con `document_generation_app`, nunca
+con el administrador.
 
-This split follows Anexo J.4: the roles are instance-wide (they begin
-with the domain prefix), so they live in the infrastructure repository;
-the schema-level privileges are domain-specific, so they live here.
+Esta división sigue el Anexo J.4: los roles son de toda la instancia
+(empiezan con el prefijo del dominio), por eso viven en el repositorio de
+infraestructura; los permisos a nivel de schema son propios del dominio,
+por eso viven aquí.
 
-## Reconstruction verification
+## Verificación de reconstrucción
 
-Per Anexo A, this repository ships a `db-ci.yml` workflow that runs on
-every push to `develop`, `qa`, and `main`, and on every pull request to
-those branches. The workflow spins up an empty Postgres 16 service,
-mimics the infrastructure bootstrap (creates the `_app`, `_reader`, and
-`_writer` roles), then runs four steps:
+Según el Anexo A, este repositorio incluye un workflow `db-ci.yml` que
+se ejecuta en cada push a `develop`, `qa` y `main`, y en cada pull
+request hacia esas ramas. El workflow levanta un servicio Postgres 16
+vacío, replica el arranque de la infraestructura (crea los roles `_app`,
+`_reader` y `_writer`) y ejecuta cinco pasos:
 
-1. `liquibase update` — the full schema is built from an empty database.
-2. `liquibase update` again — the second run must apply zero changesets.
-   A non-zero change count means migrations are not incremental.
-3. `liquibase rollback-count 999` — every changeset is rolled back in
-   reverse order, leaving the database empty.
-4. `liquibase update` — the schema is rebuilt from scratch after a full
-   rollback.
+1. `liquibase update` — el schema completo se construye desde una base
+   de datos vacía.
+2. `liquibase update` de nuevo — la segunda ejecución debe aplicar cero
+   changesets. Un conteo distinto de cero indica que las migraciones no
+   son incrementales.
+3. `liquibase rollback-count 999` — todos los changesets se revierten en
+   orden inverso, dejando la base de datos vacía.
+4. `liquibase update` — el schema se reconstruye desde cero tras el
+   rollback completo.
+5. Verificación de control de acceso — `document_generation_reader` no
+   puede ejecutar `INSERT` sobre `consultation_document`.
 
-A second job (`expected-count`) counts the changesets declared in every
-`changelog.yaml` and compares that number with the value in
-`changelog/expected-count.txt`. A mismatch fails the build.
+Un segundo job (`expected-count`) cuenta los changesets declarados en
+cada `changelog.yaml` y compara ese número con el valor de
+`changelog/expected-count.txt`. Si no coinciden, el build falla.
 
-To run the verification locally:
+Para ejecutar la verificación localmente:
 
     docker network create platform       # once per machine
     cd ../telemed-ia-infra-postgres
