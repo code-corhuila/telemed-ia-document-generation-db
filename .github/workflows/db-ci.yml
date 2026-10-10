@@ -1,0 +1,134 @@
+name: DB CI
+
+on:
+  push:
+    branches: [develop, qa, main]
+  pull_request:
+    branches: [develop, qa, main]
+
+jobs:
+  reconstruction:
+    name: Reconstruction check
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: ci_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      LIQUIBASE_COMMAND_URL: jdbc:postgresql://localhost:5432/ci_db
+      # The password is generated at job start and exported to
+      # GITHUB_ENV. It is not stored in the repository.
+      LIQUIBASE_COMMAND_USERNAME: document_generation_app
+      LIQUIBASE_COMMAND_CHANGELOG_FILE: changelog/changelog-master.yaml
+      LIQUIBASE_COMMAND_DATABASE_CHANGELOG_TABLE_NAME: databasechangelog_document_generation
+      LIQUIBASE_COMMAND_DATABASE_CHANGELOG_LOCK_TABLE_NAME: databasechangeloglock_document_generation
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Liquibase CLI
+        run: |
+          mkdir -p "$HOME/liquibase"
+          curl -sSL -o liquibase.tar.gz \
+            https://github.com/liquibase/liquibase/releases/download/v4.31.1/liquibase-4.31.1.tar.gz
+          tar -xzf liquibase.tar.gz -C "$HOME/liquibase"
+          echo "$HOME/liquibase" >> "$GITHUB_PATH"
+
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Wait for Postgres
+        run: |
+          for i in $(seq 1 30); do
+            PGPASSWORD=postgres psql -h localhost -U postgres -d ci_db -c "SELECT 1" >/dev/null 2>&1 && break
+            sleep 1
+          done
+
+      - name: Generate ephemeral credentials for the app user
+        run: |
+          PW=$(openssl rand -hex 16)
+          echo "CI_APP_PASSWORD=$PW" >> "$GITHUB_ENV"
+          echo "LIQUIBASE_COMMAND_PASSWORD=$PW" >> "$GITHUB_ENV"
+
+      - name: Bootstrap roles (mimics telemed-ia-infra-postgres)
+        run: |
+          # Minimal replica of the role bootstrap in
+          # telemed-ia-infra-postgres/postgres/init/01-instance.sh. If the
+          # infrastructure changes how document_generation_app, _reader, or
+          # _writer are created, this block must be updated in the same PR.
+          # CI cannot check out the infra repo without a cross-repo token, so
+          # this is an intentional duplication documented in Anexo J.4.
+          PGPASSWORD=postgres psql -h localhost -U postgres -d ci_db <<SQL
+          CREATE ROLE document_generation_app LOGIN PASSWORD '${CI_APP_PASSWORD}';
+          CREATE ROLE document_generation_reader NOLOGIN;
+          CREATE ROLE document_generation_writer NOLOGIN;
+          GRANT document_generation_reader, document_generation_writer TO document_generation_app;
+          GRANT CREATE ON DATABASE ci_db TO document_generation_app;
+          GRANT CREATE ON SCHEMA public TO document_generation_app;
+          SQL
+
+      - name: Step 1 - Apply all migrations
+        run: liquibase update
+
+      - name: Step 2 - Idempotency (expect zero changesets)
+        run: |
+          OUTPUT=$(liquibase update 2>&1)
+          echo "$OUTPUT"
+          if echo "$OUTPUT" | grep -qE "Run: [1-9]"; then
+            echo "ERROR: second update applied changesets; migrations are not incremental"
+            exit 1
+          fi
+
+      - name: Step 3 - Rollback everything
+        run: |
+          TOTAL=$(grep -Rh "^\s*-\s*changeSet:" --include="changelog.yaml" . | wc -l)
+          echo "Rolling back $TOTAL changesets"
+          liquibase rollback-count "$TOTAL"
+
+      - name: Step 4 - Rebuild from scratch
+        run: liquibase update
+
+      - name: Step 5 - Verify access control (reader cannot write)
+        run: |
+          if PGPASSWORD="$CI_APP_PASSWORD" psql -h localhost -U document_generation_app -d ci_db \
+              -c "SET ROLE document_generation_reader; INSERT INTO document_generation.consultation_document (summary_id, patient_id, format, status) VALUES (gen_random_uuid(), gen_random_uuid(), 'PDF', 'PENDING');" 2>&1 | grep -qi "permission denied"; then
+            echo "OK: _reader is blocked from INSERT"
+          else
+            echo "ERROR: _reader was not blocked from INSERT"
+            exit 1
+          fi
+
+  expected-count:
+    name: Changelog expected count
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Count changesets in changelogs and compare to expected-count.txt
+        # Known gap: this only checks cardinality. Two changesets could be
+        # swapped, renamed, or have their id/author altered without changing
+        # the total, and this gate would not catch it. A stronger check
+        # (comparing sorted changeset IDs against a committed list) is
+        # recorded as a follow-up.
+        run: |
+          DECLARED=$(grep -Rh "^\s*-\s*changeSet:" --include="changelog.yaml" . | wc -l)
+          EXPECTED=$(tr -d '[:space:]' < changelog/expected-count.txt)
+          echo "Declared changesets in changelogs: $DECLARED"
+          echo "Expected count from expected-count.txt: $EXPECTED"
+          if [ "$DECLARED" != "$EXPECTED" ]; then
+            echo "ERROR: changelog count mismatch"
+            exit 1
+          fi
