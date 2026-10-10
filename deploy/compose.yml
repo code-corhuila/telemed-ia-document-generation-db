@@ -30,9 +30,9 @@ services:
       LIQUIBASE_COMMAND_USERNAME: ${DOCUMENT_GENERATION_APP_USER:-document_generation_app}
       LIQUIBASE_COMMAND_PASSWORD: ${DOCUMENT_GENERATION_APP_PASSWORD:?required}
       LIQUIBASE_COMMAND_CHANGELOG_FILE: changelog/changelog-master.yaml
-      LIQUIBASE_COMMAND_DATABASE_CHANGELOG_TABLE_NAME: databasechangelog_document_generation
-      LIQUIBASE_COMMAND_DATABASE_CHANGELOG_LOCK_TABLE_NAME: databasechangeloglock_document_generation
-    command: ["update", "--search-path=/workspace"]
+      LIQUIBASE_DATABASE_CHANGELOG_TABLE_NAME: databasechangelog_document_generation
+      LIQUIBASE_DATABASE_CHANGELOG_LOCK_TABLE_NAME: databasechangeloglock_document_generation
+    command: ["update"]
     networks:
       - platform
 
