@@ -1,0 +1,16 @@
+databaseChangeLog:
+  - changeSet:
+      id: dcl-grants-001
+      author: telemed
+      labels: "HU-016,dcl,grants"
+      comment: "Grant reader/writer privileges on document_generation tables to the roles created by infra."
+      changes:
+        - sqlFile:
+            path: 001_grants.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+      rollback:
+        - sqlFile:
+            path: ../../05_rollbacks/03_dcl/01_grants/001_grants.rollback.sql
+            relativeToChangelogFile: true
+            splitStatements: false
