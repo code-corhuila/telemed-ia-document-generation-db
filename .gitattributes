@@ -1,0 +1,4 @@
+# Store and check out every text file with LF line endings.
+# Prevents CRLF from Windows editors from turning a small edit into a
+# whole-file diff, and keeps SQL and YAML identical across platforms.
+* text=auto eol=lf
