@@ -182,4 +182,4 @@ Detecta que se agregue o elimine un changeset, pero no que dos changesets
 se intercambien o se renombren sin cambiar el total. Un control más
 estricto compararía la lista ordenada de ids de changesets contra una
 línea base versionada; queda registrado como seguimiento y no se
-implementa aquí.
+implementa aquí.
