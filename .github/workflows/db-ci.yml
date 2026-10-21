@@ -6,10 +6,15 @@ on:
   pull_request:
     branches: [develop, qa, main]
 
+# Anexo I: the workflow only reads the code.
+permissions:
+  contents: read
+
 jobs:
   reconstruction:
     name: Reconstruction check
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     services:
       postgres:
@@ -110,9 +115,26 @@ jobs:
             exit 1
           fi
 
+      - name: Step 6 - Schema tests (tests/sql)
+        # Every *.sql file under tests/sql runs against the rebuilt schema
+        # as the domain user. A file signals failure with RAISE EXCEPTION.
+        run: |
+          shopt -s nullglob
+          FILES=(tests/sql/*.sql)
+          if [ ${#FILES[@]} -eq 0 ]; then
+            echo "ERROR: no schema tests found in tests/sql"
+            exit 1
+          fi
+          for f in "${FILES[@]}"; do
+            echo "Running $f"
+            PGPASSWORD="$CI_APP_PASSWORD" psql -h localhost -U document_generation_app -d ci_db \
+              -v ON_ERROR_STOP=1 -f "$f"
+          done
+
   expected-count:
     name: Changelog expected count
     runs-on: ubuntu-latest
+    timeout-minutes: 5
 
     steps:
       - uses: actions/checkout@v4

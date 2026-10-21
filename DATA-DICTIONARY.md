@@ -52,3 +52,16 @@ Tracks the idempotency key with which a document was created, so the
   `DOCUMENT_GENERATION_APP_PASSWORD`. Created by `telemed-ia-infra-postgres`.
 - `document_generation_reader` — NOLOGIN. Granted `SELECT`.
 - `document_generation_writer` — NOLOGIN. Granted `SELECT`, `INSERT`, `UPDATE`.
+
+### Privileges per table
+
+| Table | `document_generation_reader` | `document_generation_writer` | Granted by |
+|---|---|---|---|
+| `consultation_document` | `SELECT` | `SELECT`, `INSERT`, `UPDATE` | `dcl-grants-001` |
+| `idempotency_key` | `SELECT` | `SELECT`, `INSERT`, `UPDATE` | `dcl-grants-002` |
+
+Every table gets its grants explicitly in `03_dcl/01_grants/`. The
+`ALTER DEFAULT PRIVILEGES` statements of `dcl-grants-001` only cover tables
+created after that changeset runs, so they are not relied upon.
+`tests/sql/001_role_privileges.sql` fails if any table in the schema is
+missing these privileges, or if the reader can write.
