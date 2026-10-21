@@ -44,3 +44,18 @@ databaseChangeLog:
             path: ../../05_rollbacks/01_ddl/10_indexes/003_unique_document_id.rollback.sql
             relativeToChangelogFile: true
             splitStatements: false
+  - changeSet:
+      id: ddl-indexes-004
+      author: telemed
+      labels: "HU-016,ddl,indexes,outbox"
+      comment: "Partial index for the outbox relay query on unpublished events."
+      changes:
+        - sqlFile:
+            path: 004_create_outbox_event_indexes.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+      rollback:
+        - sqlFile:
+            path: ../../05_rollbacks/01_ddl/10_indexes/004_create_outbox_event_indexes.rollback.sql
+            relativeToChangelogFile: true
+            splitStatements: false
