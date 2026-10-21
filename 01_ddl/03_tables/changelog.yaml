@@ -44,3 +44,18 @@ databaseChangeLog:
             path: ../../05_rollbacks/01_ddl/03_tables/003_create_idempotency_key.rollback.sql
             relativeToChangelogFile: true
             splitStatements: false
+  - changeSet:
+      id: ddl-tables-004
+      author: telemed
+      labels: "HU-016,ddl,tables,outbox"
+      comment: "outbox_event: transactional outbox for ConsultationPdfGenerated (numeral 5.3.11). No FK on aggregate_id, see the SQL header."
+      changes:
+        - sqlFile:
+            path: 004_create_outbox_event.sql
+            relativeToChangelogFile: true
+            splitStatements: false
+      rollback:
+        - sqlFile:
+            path: ../../05_rollbacks/01_ddl/03_tables/004_create_outbox_event.rollback.sql
+            relativeToChangelogFile: true
+            splitStatements: false
