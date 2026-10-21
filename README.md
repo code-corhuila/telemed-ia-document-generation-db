@@ -81,8 +81,10 @@ two contracts that the schema cannot enforce on its own:
    the API must recompute the request hash and compare it against the
    stored `request_hash`. A mismatch means the same `Idempotency-Key`
    was reused with a different payload and must be rejected with
-   `409 CONFLICT`, not silently accepted. The database stores the hash;
-   it cannot compare it to an incoming value.
+   `422 BUSINESS_RULE_VIOLATION` using the shared error envelope, not
+   silently accepted. The common contract (numeral 5.3.5 of the standard)
+   has no `409` code, so the API must not introduce one. The database
+   stores the hash; it cannot compare it to an incoming value.
 
 ### Technical debt
 
@@ -180,4 +182,4 @@ Detecta que se agregue o elimine un changeset, pero no que dos changesets
 se intercambien o se renombren sin cambiar el total. Un control más
 estricto compararía la lista ordenada de ids de changesets contra una
 línea base versionada; queda registrado como seguimiento y no se
-implementa aquí.
+implementa aquí.
