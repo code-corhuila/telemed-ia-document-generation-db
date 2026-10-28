@@ -1,38 +1,38 @@
 # telemed-ia-document-generation-db
 
-Base de datos del dominio document-generation de TeleMed IA.
-Repositorio -db del microservicio document-service.
+Database of the document-generation domain of TeleMed IA.
+The -db repository of the document-service microservice.
 
-## Qué hace este microservicio
-Genera PDFs asíncronos a partir de resúmenes post-consulta. No es un
-servicio HTTP de generación en tiempo real: consume el evento
-PostConsultationSummaryGenerated, encola la generación, la ejecuta con
-un worker interno, guarda la referencia del binario en un storage
-externo y publica ConsultationPdfGenerated.
+## What this microservice does
+It generates PDFs asynchronously from post-consultation summaries. It is
+not a real-time HTTP generation service: it consumes the
+PostConsultationSummaryGenerated event, queues the generation, runs it
+with an internal worker, stores the reference to the binary in external
+storage and publishes ConsultationPdfGenerated.
 
 ## Bounded context
-- Dominio: document-generation
-- Microservicio: document-service
-- Consume: PostConsultationSummaryGenerated (de consultation-service)
-- Publica: ConsultationPdfGenerated (lo consume patient-service)
-- Entidad principal: consultation_document
-- HU-016 (RF-31) principal; HU-015 (RF-29, RF-30) relacionada
-- Schema PostgreSQL: document_generation
+- Domain: document-generation
+- Microservice: document-service
+- Consumes: PostConsultationSummaryGenerated (from consultation-service)
+- Publishes: ConsultationPdfGenerated (consumed by patient-service)
+- Main entity: consultation_document
+- HU-016 (FR-31) main; HU-015 (FR-29, FR-30) related
+- PostgreSQL schema: document_generation
 
-## Invariantes del dominio
-- El PDF solo se genera desde un PostConsultationSummary válido.
-- Un paciente solo descarga documentos de sus propias consultas.
-- Un fallo de generación NO invalida la consulta completada.
-- Una generación fallida puede reintentarse.
-- document-generation no posee ni modifica información clínica.
-- storage_reference nunca se expone al cliente directamente.
+## Domain invariants
+- The PDF is generated only from a valid PostConsultationSummary.
+- A patient downloads only the documents of their own consultations.
+- A generation failure does NOT invalidate the completed consultation.
+- A failed generation can be retried.
+- document-generation neither owns nor modifies clinical information.
+- storage_reference is never exposed to the client directly.
 
-## Lo que NO guarda esta BD
-- No binarios (no bytea, no blob): el PDF va a storage externo
-  (ADR-015 pendiente).
-- No información clínica (diagnóstico, medicamentos): vive en
+## What this database does NOT store
+- No binaries (no bytea, no blob): the PDF goes to external storage
+  (ADR-015 pending).
+- No clinical information (diagnosis, medications): it lives in
   consultation-db.
-- No FK reales a summary_id ni patient_id: viven en otras bases
+- No real FKs to summary_id or patient_id: they live in other databases
   (ADR-004 database-per-service).
 
 ## Stack
@@ -100,75 +100,75 @@ two contracts that the schema cannot enforce on its own:
   the dedup record is not an audit trail. If an audit trail is ever
   required, it must live in a separate append-only table.
 
-## ADRs que aplican
+## Applicable ADRs
 - ADR-003 bounded-contexts
 - ADR-004 database-per-service
 - ADR-010 clinical-document-separation
 - ADR-011 message-broker
 - ADR-012 service-naming-convention
-- ADR-015 (pendiente) storage de binarios PDF
+- ADR-015 (pending) storage of the PDF binaries
 
-(Ver code-corhuila/telemed-ia-docs, 05-architecture/decisions/records/)
+(See code-corhuila/telemed-ia-docs, 05-architecture/decisions/records/)
 
-## Cómo levantar
-Esta base de datos **no se levanta desde este repositorio**. Ver
-"Where the database lives": la instancia compartida se levanta desde
-`telemed-ia-infra-postgres` con `./scripts/up.sh`, y las migraciones
-se aplican desde ese mismo repositorio con el executor
-`document-generation-db-migrate` (perfil `tooling`).
+## How to start it
+This database is **not started from this repository**. See
+"Where the database lives": the shared instance is started from
+`telemed-ia-infra-postgres` with `./scripts/up.sh`, and the migrations
+are applied from that same repository with the executor
+`document-generation-db-migrate` (profile `tooling`).
 
-## Gobernanza
-Ver code-corhuila/telemed-ia-docs.
-Ramas permanentes: develop, qa, main.
-Promoción entre permanentes por git cherry-pick -x.
+## Governance
+See code-corhuila/telemed-ia-docs.
+Permanent branches: develop, qa, main.
+Promotion between permanent branches with git cherry-pick -x.
 
 ## Roles
 
-El schema `document_generation` está protegido por dos roles NOLOGIN que
-cargan los permisos:
+The `document_generation` schema is protected by two NOLOGIN roles that
+carry the privileges:
 
-- `document_generation_reader` — tiene `SELECT` sobre las tablas del schema.
-- `document_generation_writer` — tiene `SELECT`, `INSERT` y `UPDATE`.
+- `document_generation_reader` — has `SELECT` on the tables of the schema.
+- `document_generation_writer` — has `SELECT`, `INSERT` and `UPDATE`.
 
-Ambos roles los crea `telemed-ia-infra-postgres` durante el arranque de
-la instancia (`postgres/init/01-instance.sh`). Este repositorio declara
-los permisos (`03_dcl/01_grants/001_grants.sql`), no los roles.
+Both roles are created by `telemed-ia-infra-postgres` when the instance
+starts (`postgres/init/01-instance.sh`). This repository declares the
+privileges (`03_dcl/01_grants/001_grants.sql`), not the roles.
 
-El usuario de aplicación, `document_generation_app`, también lo crea la
-infraestructura (con la contraseña tomada de un secreto) y es miembro de
-ambos roles. El `-api` se conecta con `document_generation_app`, nunca
-con el administrador.
+The application user, `document_generation_app`, is also created by the
+infrastructure (with its password taken from a secret) and is a member of
+both roles. The `-api` connects as `document_generation_app`, never as
+the administrator.
 
-Esta división sigue el Anexo J.4: los roles son de toda la instancia
-(empiezan con el prefijo del dominio), por eso viven en el repositorio de
-infraestructura; los permisos a nivel de schema son propios del dominio,
-por eso viven aquí.
+This split follows Anexo J.4: roles belong to the whole instance (they
+start with the domain prefix), so they live in the infrastructure
+repository; schema-level privileges belong to the domain, so they live
+here.
 
-## Verificación de reconstrucción
+## Rebuild verification
 
-Según el Anexo A, este repositorio incluye un workflow `db-ci.yml` que
-se ejecuta en cada push a `develop`, `qa` y `main`, y en cada pull
-request hacia esas ramas. El workflow levanta un servicio Postgres 16
-vacío, replica el arranque de la infraestructura (crea los roles `_app`,
-`_reader` y `_writer`) y ejecuta cinco pasos:
+As Anexo A requires, this repository includes a `db-ci.yml` workflow that
+runs on every push to `develop`, `qa` and `main`, and on every pull
+request to those branches. The workflow starts an empty Postgres 16
+service, reproduces the infrastructure bootstrap (creates the `_app`,
+`_reader` and `_writer` roles) and runs five steps:
 
-1. `liquibase update` — el schema completo se construye desde una base
-   de datos vacía.
-2. `liquibase update` de nuevo — la segunda ejecución debe aplicar cero
-   changesets. Un conteo distinto de cero indica que las migraciones no
-   son incrementales.
-3. `liquibase rollback-count 999` — todos los changesets se revierten en
-   orden inverso, dejando la base de datos vacía.
-4. `liquibase update` — el schema se reconstruye desde cero tras el
-   rollback completo.
-5. Verificación de control de acceso — `document_generation_reader` no
-   puede ejecutar `INSERT` sobre `consultation_document`.
+1. `liquibase update` — the whole schema is built from an empty
+   database.
+2. `liquibase update` again — the second run must apply zero
+   changesets. A non-zero count means the migrations are not
+   incremental.
+3. `liquibase rollback-count 999` — every changeset is rolled back in
+   reverse order, leaving the database empty.
+4. `liquibase update` — the schema is rebuilt from scratch after the
+   full rollback.
+5. Access control check — `document_generation_reader` cannot run
+   `INSERT` on `consultation_document`.
 
-Un segundo job (`expected-count`) cuenta los changesets declarados en
-cada `changelog.yaml` y compara ese número con el valor de
-`changelog/expected-count.txt`. Si no coinciden, el build falla.
+A second job (`expected-count`) counts the changesets declared in every
+`changelog.yaml` and compares that number with the value in
+`changelog/expected-count.txt`. If they differ, the build fails.
 
-Para ejecutar la verificación localmente:
+To run the verification locally:
 
     docker network create platform       # once per machine
     cd ../telemed-ia-infra-postgres
@@ -176,10 +176,9 @@ Para ejecutar la verificación localmente:
     docker compose --env-file env/dev.env --profile tooling \
       run --rm document-generation-db-migrate
 
-Limitación conocida: el job `expected-count` compara el número de
-changesets declarados en los changelogs con `changelog/expected-count.txt`.
-Detecta que se agregue o elimine un changeset, pero no que dos changesets
-se intercambien o se renombren sin cambiar el total. Un control más
-estricto compararía la lista ordenada de ids de changesets contra una
-línea base versionada; queda registrado como seguimiento y no se
-implementa aquí.
+Known limitation: the `expected-count` job compares the number of
+changesets declared in the changelogs with `changelog/expected-count.txt`.
+It detects that a changeset was added or removed, but not that two
+changesets were swapped or renamed without changing the total. A stricter
+check would compare the ordered list of changeset ids against a versioned
+baseline; this is recorded as a follow-up and not implemented here.
