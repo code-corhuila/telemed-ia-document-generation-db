@@ -5,17 +5,21 @@ The -db repository of the document-service microservice.
 
 ## What this microservice does
 It generates PDFs asynchronously from post-consultation summaries. It is
-not a real-time HTTP generation service: it consumes the
-PostConsultationSummaryGenerated event, queues the generation, runs it
-with an internal worker, stores the reference to the binary in external
-storage and publishes ConsultationPdfGenerated.
+not a real-time HTTP generation service: `telemed-ia-worker` consumes the
+PostConsultationSummaryGenerated event and requests the generation with
+`POST /api/documents/generate`; the API runs it in the background, stores
+the PDF in object storage (RustFS, ADR-021), keeps only its reference here
+and publishes ConsultationPdfGenerated through the `outbox_event` table.
 
 ## Bounded context
 - Domain: document-generation
 - Microservice: document-service
-- Consumes: PostConsultationSummaryGenerated (from consultation-service)
-- Publishes: ConsultationPdfGenerated (consumed by patient-service)
-- Main entity: consultation_document
+- Triggered by: PostConsultationSummaryGenerated (from consultation-service,
+  consumed by `telemed-ia-worker`)
+- Publishes: ConsultationPdfGenerated to `documents.events` (consumed by
+  notification-service; patient-service planned)
+- Tables: `consultation_document` (main entity), `idempotency_key`,
+  `outbox_event`
 - HU-016 (FR-31) main; HU-015 (FR-29, FR-30) related
 - PostgreSQL schema: document_generation
 
@@ -28,12 +32,12 @@ storage and publishes ConsultationPdfGenerated.
 - storage_reference is never exposed to the client directly.
 
 ## What this database does NOT store
-- No binaries (no bytea, no blob): the PDF goes to external storage
-  (ADR-015 pending).
+- No binaries (no bytea, no blob): the PDF goes to object storage
+  (ADR-015, server per ADR-021).
 - No clinical information (diagnosis, medications): it lives in
   consultation-db.
-- No real FKs to summary_id or patient_id: they live in other databases
-  (ADR-004 database-per-service).
+- No real FKs to summary_id or patient_id: they belong to other domains'
+  schemas, and Anexo J forbids foreign keys between domains (ADR-004).
 
 ## Stack
 - PostgreSQL 16-alpine
@@ -106,7 +110,9 @@ two contracts that the schema cannot enforce on its own:
 - ADR-010 clinical-document-separation
 - ADR-011 message-broker
 - ADR-012 service-naming-convention
-- ADR-015 (pending) storage of the PDF binaries
+- ADR-015 document storage
+- ADR-021 object storage (RustFS)
+- ADR-024 document-generation persistence
 
 (See code-corhuila/telemed-ia-docs, 05-architecture/decisions/records/)
 
